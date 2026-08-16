@@ -1,0 +1,7 @@
+{
+  "name": "App Template",
+  "description": "A modern, modular Jetpack Compose starter template with Room persistence, M3 design system, and UI catalog for building Android applications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

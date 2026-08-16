@@ -1,0 +1,87 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug:
+    name: Build & Test Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore Debug Keystore
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            echo "Decoding debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          else
+            echo "Creating new debug keystore..."
+            keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Create .env from Example if not present
+        run: |
+          if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+            cp .env.example .env
+          fi
+
+      - name: Run Unit Tests
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew testDebugUnitTest --no-daemon --stacktrace
+          else
+            gradle testDebugUnitTest --no-daemon --stacktrace
+          fi
+
+      - name: Assemble Debug APK
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --no-daemon --stacktrace
+          else
+            gradle assembleDebug --no-daemon --stacktrace
+          fi
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7

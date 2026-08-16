@@ -1,0 +1,121 @@
+name: Build Release APK & Bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - 'release/**'
+  workflow_dispatch:
+    inputs:
+      build_bundle:
+        description: 'Build Android App Bundle (.aab) for Google Play'
+        required: true
+        type: boolean
+        default: true
+      build_apk:
+        description: 'Build Release APK (.apk)'
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configure Keystore & Environment
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD_SECRET: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD_SECRET: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Copy environment file
+          if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+            cp .env.example .env
+          fi
+
+          # Setup Release Keystore
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using Release Keystore from GitHub Secrets..."
+            echo "$KEYSTORE_BASE64" | base64 -d > "$GITHUB_WORKSPACE/my-upload-key.jks"
+            echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/my-upload-key.jks" >> $GITHUB_ENV
+            echo "STORE_PASSWORD=${STORE_PASSWORD_SECRET}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${KEY_PASSWORD_SECRET}" >> $GITHUB_ENV
+          else
+            echo "No Release Keystore secret found. Generating temporary release signing key for CI build..."
+            keytool -genkey -v -keystore "$GITHUB_WORKSPACE/my-upload-key.jks" \
+              -alias upload \
+              -storepass temppassword123 \
+              -keypass temppassword123 \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Release Build,O=CI,C=US"
+            echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/my-upload-key.jks" >> $GITHUB_ENV
+            echo "STORE_PASSWORD=temppassword123" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=temppassword123" >> $GITHUB_ENV
+          fi
+
+      - name: Run Unit Tests
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew testReleaseUnitTest --no-daemon --stacktrace || ./gradlew testDebugUnitTest --no-daemon --stacktrace
+          else
+            gradle testReleaseUnitTest --no-daemon --stacktrace || gradle testDebugUnitTest --no-daemon --stacktrace
+          fi
+
+      - name: Build Release APK
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_apk }}
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleRelease --no-daemon --stacktrace
+          else
+            gradle assembleRelease --no-daemon --stacktrace
+          fi
+
+      - name: Build Release App Bundle (AAB)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_bundle }}
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew bundleRelease --no-daemon --stacktrace
+          else
+            gradle bundleRelease --no-daemon --stacktrace
+          fi
+
+      - name: Upload Release APK Artifact
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_apk }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Release AAB Bundle Artifact
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_bundle }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-bundle
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn
+          retention-days: 30
