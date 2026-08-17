@@ -46,22 +46,19 @@ jobs:
             cp .env.example .env
           fi
 
+      - name: Use Gradle 9.3.1
+        run: gradle wrapper --gradle-version 9.3.1
+
+      - name: Beri Izin Akses Gradle
+        run: chmod +x gradlew || true
+
       - name: Run Unit Tests
         run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x gradlew
-            ./gradlew testDebugUnitTest --no-daemon --stacktrace
-          else
-            gradle testDebugUnitTest --no-daemon --stacktrace
-          fi
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace
 
       - name: Assemble Debug APK
         run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v6
