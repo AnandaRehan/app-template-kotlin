@@ -27,14 +27,14 @@ android {
     getByName("debug") {
       val keystorePath = System.getenv("DEBUG_KEYSTORE_PATH") ?: "${rootDir}/debug.keystore"
       val localDebugKs = file(keystorePath)
-      val envStorePass = System.getenv("DEBUG_STORE_PASSWORD")?.trim()?.takeIf { it.isNotEmpty() }
+      val envStorePass = System.getenv("DEBUG_STORE_PASSWORD")?.trim()?.takeIf { it.isNotEmpty() } ?: "android"
       val envKeyAlias = System.getenv("DEBUG_KEY_ALIAS")?.trim()?.takeIf { it.isNotEmpty() } ?: "androiddebugkey"
       val envKeyPass = System.getenv("DEBUG_KEY_PASSWORD")?.trim()?.takeIf { it.isNotEmpty() } ?: envStorePass
       if (localDebugKs.exists()) {
         storeFile = localDebugKs
-        storePassword = envStorePass ?: ""
+        storePassword = envStorePass
         keyAlias = envKeyAlias
-        keyPassword = envKeyPass ?: ""
+        keyPassword = envKeyPass
       }
     }
     create("release") {
